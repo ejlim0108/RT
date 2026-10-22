@@ -396,6 +396,32 @@ def latest_raw():
     return max(files, key=lambda f: (re.findall(r'(\d{6})', os.path.basename(f)) or ['0'])[-1] + str(os.path.getmtime(f)))
 
 
+def make_offline(data, raw):
+    """공유용 단일 HTML: 데이터와 26AW 이미지를 파일 안에 넣어 오프라인에서도 열린다."""
+    import base64
+    import copy
+    d = copy.deepcopy(data)
+    for p in d['aw']:
+        path = os.path.join(PRODUCT_INFO, p['img']) if p.get('img') else None
+        if path and os.path.exists(path):
+            p['img'] = 'data:image/jpeg;base64,' + base64.b64encode(open(path, 'rb').read()).decode()
+        else:
+            p['img'] = None
+    html = open(os.path.join(HERE, 'index.html'), encoding='utf-8').read()
+    html = html.replace("const IMG_BASE = '../product-info/';", "const IMG_BASE = '';", 1)
+    html, n = re.subn(r'\(function load\(\)\{.*?\}\)\(\);', 'boot();', html, count=1, flags=re.S)
+    if n != 1:
+        raise RuntimeError('index.html 로더 블록을 찾지 못함')
+    payload = json.dumps(d, ensure_ascii=False, separators=(',', ':')).replace('</', '<\\/')
+    html = html.replace('<script>\n', f'<script>window.RT_DATA={payload};</script>\n<script>\n', 1)
+    tag = (re.findall(r'(\d{6})', os.path.basename(raw)) or [dt.date.today().strftime('%y%m%d')])[-1]
+    out = os.path.join(HERE, 'dist', f'Kangol_RT검토맵_{tag}.html')
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    open(out, 'w', encoding='utf-8', newline='\n').write(html)
+    print(f'  → 공유용 파일: {os.path.relpath(out, HERE)} ({os.path.getsize(out) // 1024} KB)')
+    return out
+
+
 def git(repo, *args):
     exe = shutil.which('git') or r'C:\Program Files\Git\cmd\git.exe'
     return subprocess.run([exe, '-C', repo, *args], capture_output=True, text=True, encoding='utf-8')
@@ -419,6 +445,7 @@ if __name__ == '__main__':
     data = build(raw)
     if not data['aw'] or not data['co']:
         sys.exit('! 품번이 0개입니다. raw 파일 형식을 확인하세요. (푸시하지 않음)')
+    make_offline(data, raw)
     if '--push' in sys.argv:
         print('■ GitHub 업로드')
         label = os.path.splitext(os.path.basename(raw))[0]

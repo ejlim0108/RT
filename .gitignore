@@ -2,5 +2,6 @@ product-info-old/
 *.xlsx
 ~$*
 __pycache__/
+dist/
 # 이미지 내장 구버전(1.2MB) — 로컬 보관만
 kangol_26AW_RT_list.html
